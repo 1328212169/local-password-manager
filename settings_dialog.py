@@ -71,6 +71,11 @@ class SettingsDialog(QDialog):
         self.init_email_tab()
         self.tab_widget.addTab(self.email_tab, "邮箱设置")
         
+        # 文本导入
+        self.text_import_tab = QWidget()
+        self.init_text_import_tab()
+        self.tab_widget.addTab(self.text_import_tab, "文本导入")
+        
         main_layout.addWidget(self.tab_widget)
         
         # 按钮布局
@@ -132,6 +137,11 @@ class SettingsDialog(QDialog):
         self.lock_now_btn = QPushButton("立即锁定应用")
         self.lock_now_btn.clicked.connect(self.lock_now)
         password_layout.addWidget(self.lock_now_btn)
+        
+        # 批量导出按钮
+        self.batch_export_btn = QPushButton("批量导出密码")
+        self.batch_export_btn.clicked.connect(self.batch_export_passwords)
+        password_layout.addWidget(self.batch_export_btn)
         
         # 邮箱绑定状态提示
         email_status = QLabel(f"邮箱绑定状态：{'已绑定' if self.settings['email'] else '未绑定'}")
@@ -401,6 +411,27 @@ class SettingsDialog(QDialog):
             msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
             msg_box.exec()
     
+    def init_text_import_tab(self):
+        """初始化文本导入标签页"""
+        layout = QVBoxLayout()
+        
+        # 导入按钮
+        import_btn = QPushButton("导入TXT到数据库")
+        import_btn.clicked.connect(self.import_txt_to_database)
+        import_btn.setFixedSize(200, 40)
+        
+        # 居中布局
+        center_layout = QHBoxLayout()
+        center_layout.addStretch()
+        center_layout.addWidget(import_btn)
+        center_layout.addStretch()
+        
+        layout.addStretch()
+        layout.addLayout(center_layout)
+        layout.addStretch()
+        
+        self.text_import_tab.setLayout(layout)
+    
     def change_master_password(self):
         """更改主密码"""
         # 检查是否绑定邮箱
@@ -451,6 +482,110 @@ class SettingsDialog(QDialog):
         """返回当前设置"""
         return self.settings
     
+    def import_txt_to_database(self):
+        """导入TXT文件到数据库"""
+        from PyQt6.QtWidgets import QFileDialog
+        import uuid
+        from datetime import datetime
+        
+        # 1. 弹出文件选择对话框
+        file_dialog = QFileDialog(self)
+        file_dialog.setWindowTitle("选择TXT文件")
+        file_dialog.setNameFilter("文本文件 (*.txt)")
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        
+        if file_dialog.exec() != QFileDialog.DialogCode.Accepted:
+            return
+        
+        selected_file = file_dialog.selectedFiles()[0]
+        
+        try:
+            # 2. 调用txt_converter.py解析文件
+            from txt_converter import parse_input_file
+            websites = parse_input_file(selected_file)
+            
+            if not websites:
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("提示")
+                msg_box.setText("未解析到任何账号密码记录")
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+                msg_box.exec()
+                return
+            
+            # 3. 存入本地数据库
+            success_count = 0
+            error_count = 0
+            error_reasons = []
+            
+            for website in websites:
+                try:
+                    # 生成唯一ID
+                    entry_id = str(uuid.uuid4())
+                    
+                    # 构建条目
+                    entry = {
+                        'id': entry_id,
+                        'website_name': website.get('name', ''),
+                        'url': website.get('url', ''),
+                        'username': website.get('username', ''),
+                        'password': website.get('password', ''),
+                        'note': website.get('note', ''),
+                        'created_at': datetime.now().isoformat(),
+                        'updated_at': datetime.now().isoformat()
+                    }
+                    
+                    # 调用父窗口的方法添加条目
+                    if hasattr(self.parent(), 'entries') and hasattr(self.parent(), 'entries_order'):
+                        self.parent().entries[entry_id] = entry
+                        self.parent().entries_order.append(entry_id)
+                        success_count += 1
+                    else:
+                        raise Exception("无法访问数据库")
+                    
+                except Exception as e:
+                    error_count += 1
+                    error_reasons.append(str(e))
+            
+            # 保存数据库
+            if hasattr(self.parent(), 'save_db'):
+                self.parent().save_db()
+            
+            # 4. 操作反馈
+            if error_count == 0:
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("成功")
+                msg_box.setText(f"导入完成！共成功导入{success_count}条账号密码记录到数据库")
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+                msg_box.exec()
+            elif success_count == 0:
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("错误")
+                msg_box.setText(f"导入失败：{'; '.join(error_reasons[:3])}")
+                msg_box.setIcon(QMessageBox.Icon.Critical)
+                msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+                msg_box.exec()
+            else:
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("部分成功")
+                msg_box.setText(f"导入完成！成功导入{success_count}条，失败{error_count}条，失败原因：{'; '.join(error_reasons[:3])}")
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+                msg_box.exec()
+            
+            # 刷新主窗口表格
+            if hasattr(self.parent(), 'refresh_table'):
+                self.parent().refresh_table()
+                
+        except Exception as e:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("错误")
+            msg_box.setText(f"导入失败：{str(e)}")
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+            msg_box.exec()
+    
     def send_reset_code(self) -> bool:
         """发送重置主密码的验证码"""
         if not self.settings["email"] or not self.settings["email_password"]:
@@ -472,3 +607,71 @@ class SettingsDialog(QDialog):
             return False
         
         return code == self.verification_code
+    
+    def batch_export_passwords(self):
+        """批量导出密码"""
+        # 弹出密码验证对话框
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton
+        
+        class PasswordVerifyDialog(QDialog):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.setWindowTitle("验证主密码")
+                self.setFixedSize(300, 150)
+                self.setModal(True)
+                
+                self.password = ""
+                self.init_ui()
+            
+            def init_ui(self):
+                layout = QVBoxLayout()
+                
+                label = QLabel("请输入主密码以验证身份：")
+                layout.addWidget(label)
+                
+                self.password_input = QLineEdit()
+                self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+                self.password_input.setPlaceholderText("输入主密码")
+                layout.addWidget(self.password_input)
+                
+                button_layout = QHBoxLayout()
+                self.ok_btn = QPushButton("确定")
+                self.ok_btn.clicked.connect(self.accept)
+                self.cancel_btn = QPushButton("取消")
+                self.cancel_btn.clicked.connect(self.reject)
+                
+                button_layout.addStretch()
+                button_layout.addWidget(self.ok_btn)
+                button_layout.addWidget(self.cancel_btn)
+                
+                layout.addLayout(button_layout)
+                self.setLayout(layout)
+            
+            def accept(self):
+                self.password = self.password_input.text().strip()
+                if not self.password:
+                    QMessageBox.warning(self, "警告", "请输入主密码")
+                    return
+                super().accept()
+        
+        # 显示验证对话框
+        verify_dialog = PasswordVerifyDialog(self)
+        if verify_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        
+        password = verify_dialog.password
+        
+        # 验证主密码
+        if hasattr(self.parent(), 'verify_master_password'):
+            if not self.parent().verify_master_password(password):
+                QMessageBox.warning(self, "错误", "主密码错误，导出失败")
+                return
+        else:
+            QMessageBox.warning(self, "错误", "无法验证主密码")
+            return
+        
+        # 执行导出
+        if hasattr(self.parent(), 'export_passwords'):
+            self.parent().export_passwords()
+        else:
+            QMessageBox.warning(self, "错误", "无法执行导出操作")
