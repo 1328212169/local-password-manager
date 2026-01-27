@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QTableWidgetItem, QPushButton, QLineEdit, QLabel, QDialog, QFormLayout,
                              QCheckBox, QMenuBar, QMenu, QSystemTrayIcon, QMessageBox,
-                             QFileDialog, QInputDialog, QHeaderView)
+                             QFileDialog, QInputDialog, QHeaderView, QTextEdit)
 from PyQt6.QtCore import Qt, QTimer, QUrl, QMimeData, QPoint, QEvent
 from PyQt6.QtGui import QDesktopServices, QDrag, QPixmap, QColor, QKeySequence, QIcon, QAction, QPainter
 import uuid
@@ -144,8 +144,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("密码管理器")
         self.setMinimumSize(800, 600)
-        # 设置窗口标志，使其不在任务栏主区域显示，只保留托盘图标
-        self.setWindowFlag(Qt.WindowType.Tool)
+        # 移除Tool标志，使用默认窗口类型，确保显示标准控制按钮
+        # 保留系统托盘功能
         
         # 初始化数据
         self.db_file = "passwords.json.aes"
@@ -154,6 +154,7 @@ class MainWindow(QMainWindow):
         self.entries_order = []
         self.master_password = ""
         self.settings = {"auto_lock_time": 5, "lock_on_minimize": True, "theme": "light"}
+        self.login_dialog_visible = False
         
         # 剪贴板定时器
         self.clipboard_timer = QTimer()
@@ -317,7 +318,7 @@ class MainWindow(QMainWindow):
         tray_menu = QMenu()
         
         show_action = QAction("显示", self)
-        show_action.triggered.connect(self.show_normal)
+        show_action.triggered.connect(self.show_from_menu)
         
         lock_action = QAction("锁定", self)
         lock_action.triggered.connect(self.lock_app)
@@ -336,8 +337,91 @@ class MainWindow(QMainWindow):
     
     def on_tray_icon_activated(self, reason):
         """托盘图标激活事件"""
+        # 只处理左键点击图标
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self.show_normal()
+            self.show_main_window()
+    
+    def show_from_menu(self):
+        """从菜单显示主窗口"""
+        self.show_main_window()
+    
+    def copy_template(self, template_text):
+        """复制模板到剪贴板"""
+        from PyQt6.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        clipboard.setText(template_text)
+        
+        # 显示复制成功提示
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("成功")
+        msg_box.setText("模板已复制到剪贴板，您可以粘贴到文本文件中使用")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+        msg_box.exec()
+    
+    def show_main_window(self):
+        """显示主窗口"""
+        # 强制显示主窗口，不检查锁定状态
+        if not self.master_password:
+            # 已锁定，显示登录对话框
+            if self.login_dialog_visible:
+                return
+            
+            self.login_dialog_visible = True
+            
+            login_dialog = QDialog(self)
+            login_dialog.setWindowTitle("登录")
+            login_dialog.setFixedSize(300, 150)
+            login_dialog.setModal(True)
+            
+            layout = QVBoxLayout(login_dialog)
+            
+            form_layout = QFormLayout()
+            password_label = QLabel("主密码：")
+            password_edit = QLineEdit()
+            password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            form_layout.addRow(password_label, password_edit)
+            
+            layout.addLayout(form_layout)
+            
+            # 忘记密码按钮
+            forgot_layout = QHBoxLayout()
+            forgot_btn = QPushButton("忘记密码？")
+            forgot_btn.clicked.connect(lambda: self.forgot_password(login_dialog))
+            forgot_layout.addWidget(forgot_btn)
+            forgot_layout.addStretch()
+            layout.addLayout(forgot_layout)
+            
+            button_layout = QHBoxLayout()
+            login_btn = QPushButton("登录")
+            login_btn.clicked.connect(lambda: self.login(password_edit.text(), login_dialog))
+            cancel_btn = QPushButton("取消")
+            cancel_btn.clicked.connect(login_dialog.reject)
+            
+            button_layout.addStretch()
+            button_layout.addWidget(login_btn)
+            button_layout.addWidget(cancel_btn)
+            
+            layout.addLayout(button_layout)
+            
+            # 回车键登录
+            password_edit.returnPressed.connect(lambda: self.login(password_edit.text(), login_dialog))
+            
+            try:
+                result = login_dialog.exec()
+                if result != QDialog.DialogCode.Accepted:
+                    return
+            finally:
+                self.login_dialog_visible = False
+        else:
+            # 未锁定，直接显示主窗口
+            # 确保窗口完全显示并激活到前台
+            self.showNormal()
+            self.activateWindow()
+            self.raise_()
+            # 强制设置窗口为活动窗口
+            self.setWindowState(Qt.WindowState.WindowActive)
+            self.setFocus()
     
     def show_login_dialog(self):
         """显示登录对话框"""
@@ -368,7 +452,7 @@ class MainWindow(QMainWindow):
         login_btn = QPushButton("登录")
         login_btn.clicked.connect(lambda: self.login(password_edit.text(), login_dialog))
         cancel_btn = QPushButton("取消")
-        cancel_btn.clicked.connect(login_dialog.reject)
+        cancel_btn.clicked.connect(lambda: self.handle_login_cancel(login_dialog))
         
         button_layout.addStretch()
         button_layout.addWidget(login_btn)
@@ -380,6 +464,7 @@ class MainWindow(QMainWindow):
         password_edit.returnPressed.connect(lambda: self.login(password_edit.text(), login_dialog))
         
         if login_dialog.exec() == QDialog.DialogCode.Rejected:
+            # 登录对话框被拒绝时，直接退出应用
             self.close_app()
     
     def setup_first_run(self):
@@ -466,10 +551,16 @@ class MainWindow(QMainWindow):
         if self.crypto_manager.verify_master_password(self.db_file, password):
             self.master_password = password
             self.load_entries()
+            # 窗口显示后再启动定时器
             self.start_lock_timer()
             dialog.accept()
-            # 确保主窗口显示出来，解决锁定后无法唤醒的问题
-            self.show_normal()
+            # 强制显示主窗口并激活到前台
+            self.showNormal()
+            self.activateWindow()
+            self.raise_()
+            # 确保窗口状态正确
+            self.setWindowState(Qt.WindowState.WindowActive)
+            self.setFocus()
         else:
             msg_box = QMessageBox(dialog)
             msg_box.setWindowTitle("警告")
@@ -1080,6 +1171,62 @@ class MainWindow(QMainWindow):
     
     def batch_add_entries(self):
         """批量添加密码条目"""
+        # 显示标准模板提示
+        template_dialog = QDialog(self)
+        template_dialog.setWindowTitle("批量导入模板提示")
+        template_dialog.setFixedSize(500, 300)
+        template_dialog.setModal(True)
+        
+        layout = QVBoxLayout(template_dialog)
+        
+        # 提示信息
+        info_label = QLabel("请按照以下标准模板格式准备 TXT 文件：")
+        info_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(info_label)
+        
+        # 模板说明
+        template_text = QTextEdit()
+        template_text.setReadOnly(True)
+        template_text.setText('''# 标准模板格式
+
+## 格式说明：
+- 每行一个密码条目
+- 使用逗号分隔各字段（中文逗号和英文逗号都可以）
+- 字段顺序：网站名,网址,账号,密码,备注
+- 备注字段可选
+- .csv是网站导出的账号密码格式
+## txt示例：
+N网,https://www.nexusmods.com/,username1,password1
+星辰云,https://console.starx.cn/,18081587048,123456,游戏账号
+零点FRP,https://frp.top/,user2,password2''')
+        layout.addWidget(template_text)
+        
+        # 按钮布局
+        button_layout = QHBoxLayout()
+        
+        # 复制模板按钮
+        copy_btn = QPushButton("复制模板")
+        copy_btn.clicked.connect(lambda: self.copy_template(template_text.toPlainText()))
+        
+        # 继续按钮
+        continue_btn = QPushButton("继续导入")
+        continue_btn.clicked.connect(template_dialog.accept)
+        
+        # 取消按钮
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(template_dialog.reject)
+        
+        button_layout.addWidget(copy_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(continue_btn)
+        button_layout.addWidget(cancel_btn)
+        
+        layout.addLayout(button_layout)
+        
+        # 显示模板提示
+        if template_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        
         # 文件选择对话框
         file_path, _ = QFileDialog.getOpenFileName(self, "选择批量导入文件", "", "CSV Files (*.csv);;Text Files (*.txt)")
         if not file_path:
@@ -1360,37 +1507,57 @@ class MainWindow(QMainWindow):
     
     def show_help(self):
         """显示软件操作注意事项"""
-        help_text = """密码管理器操作注意事项：
+        help_text = """密码管理器操作说明：
 
 1. 登录与锁定：
    - 首次使用需设置主密码
    - 空闲时间超过设定值后自动锁定
-   - 支持手动锁定功能
-   - 可通过邮箱重置主密码
+   - 点击设置中的"立即锁定应用"可手动锁定
+   - 忘记主密码可通过绑定的邮箱重置
+   - 取消登录时可选择退出软件
 
 2. 密码管理：
-   - 支持添加、编辑、删除密码条目
-   - 支持批量导入/导出
-   - 密码生成功能，支持自定义复杂度
-   - 密码自动复制到剪贴板，15秒后自动清空
+   - 添加密码：点击"添加"按钮，填写网站名、网址、账号、密码等信息
+   - 编辑密码：选择条目后点击"编辑"按钮修改信息
+   - 删除密码：选择条目后点击"删除"按钮
+   - 批量导入：点击"批量添加"按钮，选择CSV/TXT文件导入
+   - 文本导入：打开"设置"窗口，进入"文本导入"标签页，点击"导入TXT到数据库"按钮
+   - 批量导出：点击"导出"按钮，选择保存位置
+   - 密码生成：点击密码输入框旁的"生成"按钮，可自定义密码复杂度
+   - 密码复制：点击表格中的"复制账号"或"复制密码"按钮，密码会自动复制到剪贴板，15秒后自动清空
 
 3. 悬浮窗口：
    - 快捷键 Ctrl+Alt+P 快速调用
-   - 支持搜索功能
-   - 支持直接复制账号密码
-   - 支持双击打开网址
+   - 在搜索框中输入关键词查找密码
+   - 点击条目可复制账号密码
+   - 双击条目可直接打开对应网址
 
 4. 安全设置：
-   - 可设置自动锁定时间
-   - 可设置最小化时是否锁定
-   - 支持主题切换
-   - 可绑定邮箱用于密码重置
+   - 自动锁定时间：在设置中调整闲置时间
+   - 最小化锁定：设置中可开启"最小化到系统托盘时自动锁定"
+   - 主题切换：设置中可选择浅色或深色主题
+   - 邮箱绑定：在设置的"邮箱设置"标签页中绑定邮箱，用于密码重置
+   - 更改主密码：在设置中点击"更改主密码"按钮
 
 5. 其他功能：
-   - 支持拖拽调整条目顺序
-   - 支持搜索功能
-   - 支持窗口置顶
-   - 支持系统托盘图标
+   - 搜索功能：在主窗口顶部的搜索框中输入关键词
+   - 双击打开网址：在表格中双击网站名或网址列
+   - 系统托盘：软件可最小化到系统托盘，右键可选择显示或退出
+   - 窗口置顶：悬浮窗口支持置顶显示
+
+6. 文本导入使用步骤：
+   - 准备TXT文件，格式如下：
+     网站名: 示例网站
+     网址: https://example.com
+     账号: username
+     密码: password
+     备注: 可选备注
+     --------------------
+     （多条记录用分隔线分隔）
+   - 打开软件设置窗口，点击"文本导入"标签页
+   - 点击"导入TXT到数据库"按钮
+   - 选择准备好的TXT文件
+   - 等待导入完成，查看导入结果提示
 
 使用过程中如有问题，请随时联系开发者。"""
         
@@ -1485,7 +1652,9 @@ class MainWindow(QMainWindow):
     
     def start_lock_timer(self):
         """启动自动锁定定时器"""
-        self.lock_timer.start()
+        # 只有在启用了自动锁定选项时才启动定时器
+        if self.settings.get("auto_lock_time", 5) > 0:
+            self.lock_timer.start()
     
     def update_lock_timer(self):
         """更新自动锁定定时器间隔"""
@@ -1493,17 +1662,25 @@ class MainWindow(QMainWindow):
     
     def auto_lock(self):
         """自动锁定"""
-        self.lock_app()
+        # 自动锁定时只清空数据，不显示登录对话框
+        self.lock_app(show_login=False)
     
-    def lock_app(self):
+    def lock_app(self, show_login=True):
         """锁定应用"""
+        # 清空数据
         self.master_password = ""
         self.entries = {}
         self.entries_order = []
         self.refresh_table()
         self.clipboard_timer.stop()
         self.clear_clipboard()
-        self.show_login_dialog()
+        
+        # 隐藏主窗口，只保留托盘图标
+        self.hide()
+        
+        # 只有在需要时才显示登录对话框
+        if show_login:
+            self.show_login_dialog()
     
     def close_app(self):
         """关闭应用"""
@@ -1513,11 +1690,97 @@ class MainWindow(QMainWindow):
             self.floating_window.close()
         self.close()
     
+    def handle_login_cancel(self, login_dialog):
+        """处理取消登录逻辑"""
+        # 弹出退出确认窗口
+        msg_box = QMessageBox()
+        msg_box.setWindowTitle("退出确认")
+        msg_box.setText("确定要退出软件吗？")
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        
+        # 添加中文按钮
+        ok_button = msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+        cancel_button = msg_box.addButton("取消", QMessageBox.ButtonRole.RejectRole)
+        msg_box.setDefaultButton(cancel_button)
+        
+        msg_box.exec()
+        
+        if msg_box.clickedButton() == ok_button:
+            # 点击确定，直接退出应用
+            login_dialog.reject()
+            # 确保彻底退出，不返回show_login_dialog方法
+            import sys
+            self.tray_icon.hide()
+            if hasattr(self, 'floating_window'):
+                self.floating_window.close()
+            self.close()
+            sys.exit()
+        else:
+            # 点击取消，关闭退出确认窗口，保持登录对话框显示
+            pass
+    
     def show_normal(self):
         """显示主窗口"""
-        self.show()
-        self.activateWindow()
-        self.raise_()
+        # 检查是否已锁定
+        if not self.master_password:
+            # 检查是否已有登录对话框显示
+            if self.login_dialog_visible:
+                return
+            
+            # 已锁定，显示登录对话框
+            self.login_dialog_visible = True
+            
+            login_dialog = QDialog(self)
+            login_dialog.setWindowTitle("登录")
+            login_dialog.setFixedSize(300, 150)
+            login_dialog.setModal(True)
+            
+            layout = QVBoxLayout(login_dialog)
+            
+            form_layout = QFormLayout()
+            password_label = QLabel("主密码：")
+            password_edit = QLineEdit()
+            password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            form_layout.addRow(password_label, password_edit)
+            
+            layout.addLayout(form_layout)
+            
+            # 忘记密码按钮
+            forgot_layout = QHBoxLayout()
+            forgot_btn = QPushButton("忘记密码？")
+            forgot_btn.clicked.connect(lambda: self.forgot_password(login_dialog))
+            forgot_layout.addWidget(forgot_btn)
+            forgot_layout.addStretch()
+            layout.addLayout(forgot_layout)
+            
+            button_layout = QHBoxLayout()
+            login_btn = QPushButton("登录")
+            login_btn.clicked.connect(lambda: self.login(password_edit.text(), login_dialog))
+            cancel_btn = QPushButton("取消")
+            cancel_btn.clicked.connect(login_dialog.reject)
+            
+            button_layout.addStretch()
+            button_layout.addWidget(login_btn)
+            button_layout.addWidget(cancel_btn)
+            
+            layout.addLayout(button_layout)
+            
+            # 回车键登录
+            password_edit.returnPressed.connect(lambda: self.login(password_edit.text(), login_dialog))
+            
+            try:
+                result = login_dialog.exec()
+                if result != QDialog.DialogCode.Accepted:
+                    # 登录取消，保持隐藏状态
+                    return
+            finally:
+                # 无论登录成功还是失败，都重置标志
+                self.login_dialog_visible = False
+        else:
+            # 未锁定，直接显示主窗口
+            self.show()
+            self.activateWindow()
+            self.raise_()
     
     def changeEvent(self, event):
         """窗口状态变化事件"""
@@ -1525,8 +1788,12 @@ class MainWindow(QMainWindow):
             if self.windowState() & Qt.WindowState.WindowMinimized:
                 # 最小化到托盘
                 self.hide()
-                if self.settings["lock_on_minimize"]:
-                    self.lock_app()
+                # 只有在启用了最小化锁定选项时才启动倒计时
+                if self.master_password and self.settings["lock_on_minimize"]:
+                    self.lock_timer.start()
+            elif self.isVisible() and self.master_password:
+                # 窗口恢复可见时重置定时器
+                self.reset_lock_timer()
     
     def mouseMoveEvent(self, event):
         """鼠标移动事件，重置自动锁定定时器"""
@@ -1546,7 +1813,9 @@ class MainWindow(QMainWindow):
     def reset_lock_timer(self):
         """重置自动锁定定时器"""
         if self.master_password:  # 只有在登录状态下才重置定时器
-            self.lock_timer.start()
+            # 只有在窗口可见且启用了自动锁定时才重置定时器
+            if self.isVisible() and self.settings.get("auto_lock_time", 5) > 0:
+                self.lock_timer.start()
     
     def closeEvent(self, event):
         """关闭事件"""
@@ -1568,3 +1837,60 @@ class MainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+    
+    def verify_master_password(self, password):
+        """验证主密码"""
+        return self.crypto_manager.verify_master_password(self.db_file, password)
+    
+    def export_passwords(self):
+        """导出原始密码数据"""
+        # 文件选择对话框
+        file_path, _ = QFileDialog.getSaveFileName(self, "选择导出文件", "passwords_export.txt", "Text Files (*.txt);;CSV Files (*.csv)")
+        if not file_path:
+            return
+        
+        try:
+            # 准备导出数据
+            export_data = []
+            for entry_id in self.entries_order:
+                entry = self.entries[entry_id]
+                export_data.append({
+                    "website_name": entry["website_name"],
+                    "url": entry["url"],
+                    "username": entry["username"],
+                    "password": entry["password"],
+                    "note": entry.get("note", "")
+                })
+            
+            # 写入文件
+            with open(file_path, 'w', encoding='utf-8') as f:
+                if file_path.endswith('.csv'):
+                    # CSV格式
+                    f.write("网站名,网址,账号,密码,备注\n")
+                    for item in export_data:
+                        f.write(f"{item['website_name']},{item['url']},{item['username']},{item['password']},{item['note']}\n")
+                else:
+                    # 文本格式
+                    for item in export_data:
+                        f.write(f"网站名: {item['website_name']}\n")
+                        f.write(f"网址: {item['url']}\n")
+                        f.write(f"账号: {item['username']}\n")
+                        f.write(f"密码: {item['password']}\n")
+                        if item['note']:
+                            f.write(f"备注: {item['note']}\n")
+                        f.write("-" * 50 + "\n")
+            
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("成功")
+            msg_box.setText(f"密码数据已成功导出到\n{file_path}")
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+            msg_box.exec()
+            
+        except Exception as e:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("错误")
+            msg_box.setText(f"导出失败：{str(e)}")
+            msg_box.setIcon(QMessageBox.Icon.Critical)
+            msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
+            msg_box.exec()
