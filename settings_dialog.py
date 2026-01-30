@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QGroupBox, QGridLayout, QTabWidget, QMessageBox,
                              QRadioButton, QButtonGroup)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeySequence
 import json
 import os
 import smtplib
@@ -33,7 +34,8 @@ class SettingsDialog(QDialog):
             "lock_on_minimize": True,
             "theme": "light",
             "email": "",
-            "email_password": ""  # 加密存储
+            "email_password": "",  # 加密存储
+            "floating_window_shortcut": "Ctrl+Shift+X"  # 悬浮窗口快捷键
         }
         
         if os.path.exists(self.settings_file):
@@ -180,6 +182,42 @@ class SettingsDialog(QDialog):
         
         theme_group.setLayout(theme_layout)
         layout.addWidget(theme_group)
+        
+        # 快捷键设置
+        shortcut_group = QGroupBox("快捷键设置")
+        shortcut_layout = QVBoxLayout()
+        
+        # 悬浮窗口快捷键
+        shortcut_row = QHBoxLayout()
+        shortcut_label = QLabel("悬浮窗唤起快捷键：")
+        self.shortcut_edit = QLineEdit()
+        self.shortcut_edit.setText(self.settings["floating_window_shortcut"])
+        self.shortcut_edit.setPlaceholderText("例如：Ctrl+Shift+X")
+        # 启用键盘事件捕获
+        self.shortcut_edit.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.shortcut_edit.keyPressEvent = self.capture_shortcut
+        shortcut_row.addWidget(shortcut_label)
+        shortcut_row.addWidget(self.shortcut_edit)
+        shortcut_layout.addLayout(shortcut_row)
+        
+        # 快捷键操作按钮
+        button_row = QHBoxLayout()
+        self.reset_shortcut_btn = QPushButton("重置默认")
+        self.reset_shortcut_btn.clicked.connect(self.reset_shortcut)
+        self.clear_shortcut_btn = QPushButton("清空")
+        self.clear_shortcut_btn.clicked.connect(self.clear_shortcut)
+        button_row.addWidget(self.reset_shortcut_btn)
+        button_row.addWidget(self.clear_shortcut_btn)
+        button_row.addStretch()
+        shortcut_layout.addLayout(button_row)
+        
+        # 快捷键提示
+        shortcut_tip = QLabel("提示：按下想要设置的快捷键组合，例如 Ctrl+Shift+X")
+        shortcut_tip.setStyleSheet("font-size: 10px; color: #666666;")
+        shortcut_layout.addWidget(shortcut_tip)
+        
+        shortcut_group.setLayout(shortcut_layout)
+        layout.addWidget(shortcut_group)
         
         layout.addStretch()
         self.appearance_tab.setLayout(layout)
@@ -475,6 +513,9 @@ class SettingsDialog(QDialog):
         else:
             self.settings["theme"] = "dark"
         
+        # 更新快捷键设置
+        self.settings["floating_window_shortcut"] = self.shortcut_edit.text()
+        
         self.save_settings()
         super().accept()
     
@@ -585,6 +626,43 @@ class SettingsDialog(QDialog):
             msg_box.setIcon(QMessageBox.Icon.Critical)
             msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
             msg_box.exec()
+    
+    def reset_shortcut(self):
+        """重置默认快捷键"""
+        self.shortcut_edit.setText("Ctrl+Shift+X")
+    
+    def clear_shortcut(self):
+        """清空快捷键"""
+        self.shortcut_edit.clear()
+    
+    def capture_shortcut(self, event):
+        """捕获用户按下的快捷键组合"""
+        modifiers = event.modifiers()
+        key = event.key()
+        
+        # 忽略修饰键单独按下的情况
+        if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
+            return
+        
+        # 构建快捷键字符串
+        shortcut_parts = []
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            shortcut_parts.append("Ctrl")
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
+            shortcut_parts.append("Shift")
+        if modifiers & Qt.KeyboardModifier.AltModifier:
+            shortcut_parts.append("Alt")
+        if modifiers & Qt.KeyboardModifier.MetaModifier:
+            shortcut_parts.append("Meta")
+        
+        # 添加按键名称
+        key_name = QKeySequence(key).toString()
+        if key_name:
+            shortcut_parts.append(key_name)
+        
+        # 更新输入框
+        if shortcut_parts:
+            self.shortcut_edit.setText("+".join(shortcut_parts))
     
     def send_reset_code(self) -> bool:
         """发送重置主密码的验证码"""

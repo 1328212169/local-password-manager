@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QTableWidgetItem, QPushButton, QLineEdit, QLabel, QDialog, QFormLayout,
                              QCheckBox, QMenuBar, QMenu, QSystemTrayIcon, QMessageBox,
-                             QFileDialog, QInputDialog, QHeaderView, QTextEdit)
+                             QFileDialog, QInputDialog, QHeaderView, QTextEdit, QApplication)
 from PyQt6.QtCore import Qt, QTimer, QUrl, QMimeData, QPoint, QEvent
 from PyQt6.QtGui import QDesktopServices, QDrag, QPixmap, QColor, QKeySequence, QIcon, QAction, QPainter
 import uuid
@@ -498,12 +498,12 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         setup_btn = QPushButton("设置")
         setup_btn.clicked.connect(lambda: self.setup_master_password(password_edit.text(), confirm_edit.text(), setup_dialog))
-        cancel_btn = QPushButton("取消")
-        cancel_btn.clicked.connect(setup_dialog.reject)
+        exit_btn = QPushButton("退出")
+        exit_btn.clicked.connect(lambda: self.force_exit_app())
         
         button_layout.addStretch()
         button_layout.addWidget(setup_btn)
-        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(exit_btn)
         
         layout.addLayout(button_layout)
         
@@ -511,8 +511,12 @@ class MainWindow(QMainWindow):
         password_edit.returnPressed.connect(lambda: self.setup_master_password(password_edit.text(), confirm_edit.text(), setup_dialog))
         confirm_edit.returnPressed.connect(lambda: self.setup_master_password(password_edit.text(), confirm_edit.text(), setup_dialog))
         
-        if setup_dialog.exec() == QDialog.DialogCode.Rejected:
-            self.close_app()
+        # 显示设置对话框
+        result = setup_dialog.exec()
+        
+        # 如果用户点击了右上角的 × 关闭按钮，彻底退出软件
+        if result == QDialog.DialogCode.Rejected:
+            self.force_exit_app()
     
     def setup_master_password(self, password, confirm_password, dialog):
         """设置主密码"""
@@ -545,6 +549,13 @@ class MainWindow(QMainWindow):
         dialog.accept()
         self.load_entries()
         self.start_lock_timer()
+        # 强制显示主窗口并激活到前台
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+        # 确保窗口状态正确
+        self.setWindowState(Qt.WindowState.WindowActive)
+        self.setFocus()
     
     def login(self, password, dialog):
         """登录验证"""
@@ -1504,6 +1515,10 @@ N网,https://www.nexusmods.com/,username1,password1
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.load_settings()
             self.update_lock_timer()
+            # 更新悬浮窗口的快捷键设置
+            if hasattr(self, 'floating_window') and hasattr(self.floating_window, 'update_shortcut'):
+                shortcut_key = self.settings.get("floating_window_shortcut", "Ctrl+Shift+X")
+                self.floating_window.update_shortcut(shortcut_key)
     
     def show_help(self):
         """显示软件操作注意事项"""
@@ -1689,6 +1704,21 @@ N网,https://www.nexusmods.com/,username1,password1
         if hasattr(self, 'floating_window'):
             self.floating_window.close()
         self.close()
+        # 强制退出应用
+        import sys
+        QApplication.instance().quit()
+        sys.exit(0)
+    
+    def force_exit_app(self):
+        """强制退出应用，不弹出确认窗口"""
+        self.tray_icon.hide()
+        # 关闭悬浮窗口
+        if hasattr(self, 'floating_window'):
+            self.floating_window.close()
+        # 强制退出应用，不调用 self.close()，避免触发 closeEvent 方法
+        import sys
+        QApplication.instance().quit()
+        sys.exit(0)
     
     def handle_login_cancel(self, login_dialog):
         """处理取消登录逻辑"""
@@ -1714,10 +1744,80 @@ N网,https://www.nexusmods.com/,username1,password1
             if hasattr(self, 'floating_window'):
                 self.floating_window.close()
             self.close()
-            sys.exit()
+            # 强制退出应用
+            QApplication.instance().quit()
+            sys.exit(0)
         else:
-            # 点击取消，关闭退出确认窗口，保持登录对话框显示
-            pass
+            # 点击取消
+            # 检查是否未设置主密码（通过检查数据库文件是否存在）
+            if not os.path.exists(self.db_file):
+                # 未设置主密码，跳转到设置主密码页面
+                # 先接受登录对话框，避免show_login_dialog方法调用close_app()
+                login_dialog.accept()
+                
+                # 创建设置对话框并显示
+                setup_dialog = QDialog(self)
+                setup_dialog.setWindowTitle("首次运行设置")
+                setup_dialog.setFixedSize(400, 250)
+                setup_dialog.setModal(True)
+                
+                layout = QVBoxLayout(setup_dialog)
+                
+                info_label = QLabel("欢迎使用密码管理器！请设置您的主密码。")
+                info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                layout.addWidget(info_label)
+                
+                form_layout = QFormLayout()
+                
+                # 主密码
+                password_edit = QLineEdit()
+                password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+                form_layout.addRow("主密码：", password_edit)
+                
+                # 确认主密码
+                confirm_edit = QLineEdit()
+                confirm_edit.setEchoMode(QLineEdit.EchoMode.Password)
+                form_layout.addRow("确认主密码：", confirm_edit)
+                
+                layout.addLayout(form_layout)
+                
+                button_layout = QHBoxLayout()
+                setup_btn = QPushButton("设置")
+                setup_btn.clicked.connect(lambda: self.setup_master_password(password_edit.text(), confirm_edit.text(), setup_dialog))
+                exit_btn = QPushButton("退出")
+                exit_btn.clicked.connect(lambda: self.force_exit_app())
+                
+                button_layout.addStretch()
+                button_layout.addWidget(setup_btn)
+                button_layout.addWidget(exit_btn)
+                
+                layout.addLayout(button_layout)
+                
+                # 回车键设置
+                password_edit.returnPressed.connect(lambda: self.setup_master_password(password_edit.text(), confirm_edit.text(), setup_dialog))
+                confirm_edit.returnPressed.connect(lambda: self.setup_master_password(password_edit.text(), confirm_edit.text(), setup_dialog))
+                
+                # 显示设置对话框
+                result = setup_dialog.exec()
+                
+                # 如果用户设置了主密码，显示主窗口
+                if result == QDialog.DialogCode.Accepted:
+                    # 强制显示主窗口并激活到前台
+                    self.showNormal()
+                    self.activateWindow()
+                    self.raise_()
+                    # 确保窗口状态正确
+                    self.setWindowState(Qt.WindowState.WindowActive)
+                    self.setFocus()
+                # 如果用户点击了右上角的 × 关闭按钮，彻底退出软件
+                else:
+                    self.force_exit_app()
+            else:
+                # 已设置主密码，关闭退出确认窗口，保持登录对话框显示（返回登录页面）
+                # 先接受登录对话框，避免show_login_dialog方法调用close_app()
+                login_dialog.accept()
+                # 重新显示登录对话框
+                self.show_login_dialog()
     
     def show_normal(self):
         """显示主窗口"""
