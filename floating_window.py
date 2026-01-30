@@ -5,18 +5,22 @@ from PyQt6.QtGui import QDesktopServices, QKeySequence, QShortcut
 
 class FloatingWindow(QWidget):
     def __init__(self, parent=None):
-        # 设置父窗口，避免关闭时触发应用程序退出
-        super().__init__(parent)
+        # 不设置父窗口，确保窗口独立于主窗口
+        super().__init__()
         self.setWindowTitle("密码管理器 - 快速访问")
         self.resize(350, 400)  # 设置窗口尺寸为用户指定大小
         
-        # 保留置顶属性，但确保窗口可以正常接收事件
-        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
-        # 设置为普通窗口，确保可以正常接收用户输入
+        # 设置窗口标志
         self.setWindowFlag(Qt.WindowType.Window)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)  # 始终置顶
+        self.setWindowFlag(Qt.WindowType.Tool, True)  # 工具窗口，不在任务栏显示
         
         # 保存对主窗口的引用，用于获取数据
         self.main_window = parent
+        
+        # 快捷键对象
+        self.show_shortcut = None
+        self.shortcut_key = "Ctrl+Shift+X"
         
         # 移除半透明背景，使用系统默认背景
         
@@ -35,6 +39,10 @@ class FloatingWindow(QWidget):
         
         # 初始化全局快捷键
         self.init_shortcuts()
+        
+        # 安装事件过滤器，用于捕获全局键盘事件
+        if QApplication.instance():
+            QApplication.instance().installEventFilter(self)
         
         # 默认隐藏
         self.hide()
@@ -86,6 +94,9 @@ class FloatingWindow(QWidget):
         self.refresh_btn = QPushButton("刷新")
         self.refresh_btn.clicked.connect(self.refresh_entries)
         
+        # 为按钮添加鼠标悬浮效果
+        self.add_button_hover_effects()
+        
         button_layout.addWidget(self.fill_user_btn)
         button_layout.addWidget(self.fill_pass_btn)
         button_layout.addWidget(self.refresh_btn)
@@ -100,9 +111,10 @@ class FloatingWindow(QWidget):
     
     def init_shortcuts(self):
         """初始化快捷键"""
-        # 全局快捷键 Ctrl+Alt+P 显示/隐藏窗口
-        self.show_shortcut = QShortcut(QKeySequence("Ctrl+Alt+P"), self)
-        self.show_shortcut.activated.connect(self.toggle_visibility)
+        # 从设置中加载快捷键
+        self.shortcut_key = "Ctrl+Shift+X"
+        if self.main_window and hasattr(self.main_window, 'settings'):
+            self.shortcut_key = self.main_window.settings.get("floating_window_shortcut", "Ctrl+Shift+X")
         
         # ESC 键隐藏窗口
         self.hide_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
@@ -251,6 +263,70 @@ class FloatingWindow(QWidget):
             self.entries_order = self.main_window.entries_order
             self.filter_entries(self.search_edit.text())
             self.status_label.setText("数据已刷新")
+    
+    def update_shortcut(self, shortcut_key):
+        """更新快捷键设置"""
+        # 更新快捷键
+        self.shortcut_key = shortcut_key
+    
+    def eventFilter(self, obj, event):
+        """事件过滤器，用于捕获全局键盘事件"""
+        if event.type() == event.Type.KeyPress:
+            # 构建当前按下的快捷键字符串
+            modifiers = event.modifiers()
+            key = event.key()
+            
+            # 忽略修饰键单独按下的情况
+            if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
+                return super().eventFilter(obj, event)
+            
+            # 构建快捷键字符串
+            shortcut_parts = []
+            if modifiers & Qt.KeyboardModifier.ControlModifier:
+                shortcut_parts.append("Ctrl")
+            if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                shortcut_parts.append("Shift")
+            if modifiers & Qt.KeyboardModifier.AltModifier:
+                shortcut_parts.append("Alt")
+            if modifiers & Qt.KeyboardModifier.MetaModifier:
+                shortcut_parts.append("Meta")
+            
+            # 添加按键名称
+            key_name = QKeySequence(key).toString()
+            if key_name:
+                shortcut_parts.append(key_name)
+            
+            # 构建完整的快捷键字符串
+            current_shortcut = "+".join(shortcut_parts)
+            
+            # 检查是否匹配设置的快捷键
+            if current_shortcut == self.shortcut_key:
+                self.toggle_visibility()
+                return True
+        
+        return super().eventFilter(obj, event)
+    
+    def add_button_hover_effects(self):
+        """为按钮添加鼠标悬浮效果"""
+        # 为所有按钮添加事件处理器
+        buttons = [self.fill_user_btn, self.fill_pass_btn, self.refresh_btn]
+        
+        for button in buttons:
+            # 设置初始样式
+            button.setStyleSheet(
+                "QPushButton {\n"
+                "    background-color: #ffffff;\n"
+                "    border: 1px solid #bdbdbd;\n"
+                "    border-radius: 4px;\n"
+                "    padding: 6px 12px;\n"
+                "    transition: all 0.2s ease;\n"
+                "}\n"
+                "QPushButton:hover {\n"
+                "    background-color: #f0f0f0;\n"
+                "    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);\n"
+                "    transform: translateY(-2px);\n"
+                "}\n"
+            )
     
     # 移除自定义鼠标拖动事件，使用系统标准窗口拖动功能
     

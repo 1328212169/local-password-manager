@@ -11,8 +11,8 @@ def main():
     # 创建应用程序
     app = QApplication(sys.argv)
     app.setApplicationName("密码管理器")
-    app.setApplicationVersion("1.0.0")
-    app.setOrganizationName("PasswordManager")
+    app.setApplicationVersion("1.1.2")
+    app.setOrganizationName("幽灵足迹")
     
     # 设置全局字体
     font = QFont("Microsoft YaHei", 9)
