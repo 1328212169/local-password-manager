@@ -37,7 +37,11 @@ settings.json
 
 # 测试文件
 test_*.txt
+test_*.py
 *.txt.aes
+启动.txt
+密码测试.txt
+密码管理器.txt
 
 # 打包文件
 *.exe
