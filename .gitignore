@@ -55,6 +55,14 @@ test_*.py
 *.bak
 *.backup
 
+# 内部报告文档（不同步到GitHub）
+上传完成报告.md
+安全修复报告.md
+创建Release指南.md
+上传安装包到Release指南.md
+打包完成报告.txt
+create_release.py
+
 # Windows保留文件名
 nul
 con
