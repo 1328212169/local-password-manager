@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 2, 2, 0),
-    prodvers=(1, 2, 2, 0),
+    filevers=(1, 2, 3, 0),
+    prodvers=(1, 2, 3, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x4,
@@ -17,13 +17,13 @@ VSVersionInfo(
         [
           StringStruct('Comments', '本地密码管理器，支持账号密码存储、批量选择、TXT文件导入导出、自定义快捷键、悬浮窗口始终置顶'),
           StringStruct('CompanyName', '幽灵足迹'),
-          StringStruct('FileDescription', '本地密码管理工具 v1.2.2'),
-          StringStruct('FileVersion', '1.2.2.0'),
+          StringStruct('FileDescription', '本地密码管理工具 v1.2.3'),
+          StringStruct('FileVersion', '1.2.3.0'),
           StringStruct('InternalName', '密码管理器'),
           StringStruct('LegalCopyright', '© 2026 幽灵足迹 保留所有权利'),
           StringStruct('OriginalFilename', '密码管理器.exe'),
           StringStruct('ProductName', '本地密码管理器'),
-          StringStruct('ProductVersion', '1.2.2.0')
+          StringStruct('ProductVersion', '1.2.3.0')
         ]
         )
       ]

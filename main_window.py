@@ -2165,11 +2165,18 @@ N网,https://www.nexusmods.com/,username1,password1
         """窗口状态变化事件"""
         if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMinimized:
-                # 最小化到托盘
-                self.hide()
-                # 只有在启用了最小化锁定选项时才启动倒计时
-                if self.master_password and self.settings["lock_on_minimize"]:
-                    self.lock_timer.start()
+                # 最小化到托盘并立即锁定
+                print("[DEBUG] 窗口最小化，lock_on_minimize:", self.settings.get("lock_on_minimize", True))
+                print("[DEBUG] master_password 存在:", bool(self.master_password))
+                
+                # 只有在启用了最小化锁定选项时才立即锁定
+                if self.master_password and self.settings.get("lock_on_minimize", True):
+                    print("[DEBUG] 执行锁定操作")
+                    # 立即锁定，不等待定时器
+                    self.lock_app(show_login=False)  # 最小化时不立即显示登录框，等用户点击托盘图标时再显示
+                else:
+                    # 如果没启用锁定，只是隐藏到托盘
+                    self.hide()
             elif self.isVisible() and self.master_password:
                 # 窗口恢复可见时重置定时器
                 self.reset_lock_timer()

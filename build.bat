@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo 密码管理器 v1.2.2 打包脚本
+echo 密码管理器 v1.2.3 打包脚本
 echo ========================================
 echo.
 
@@ -44,7 +44,7 @@ if exist "发布说明.txt" copy /Y "发布说明.txt" "dist\发布说明.txt"
 
 REM 创建压缩包
 cd dist
-powershell -Command "Compress-Archive -Path '密码管理器.exe','发布说明.txt' -DestinationPath '密码管理器1.2.2.zip' -Force"
+powershell -Command "Compress-Archive -Path '密码管理器.exe','发布说明.txt' -DestinationPath '密码管理器1.2.3.zip' -Force"
 cd ..
 
 echo.
@@ -53,7 +53,7 @@ echo.
 echo ========================================
 echo 打包成功！
 echo 可执行文件位置: dist\密码管理器.exe
-echo 压缩包位置: dist\密码管理器1.2.2.zip
+echo 压缩包位置: dist\密码管理器1.2.3.zip
 echo ========================================
 echo.
 pause
