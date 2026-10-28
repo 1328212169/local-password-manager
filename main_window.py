@@ -3,8 +3,8 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTa
                              QCheckBox, QMenuBar, QMenu, QSystemTrayIcon, QMessageBox,
                              QFileDialog, QInputDialog, QHeaderView, QTextEdit, QApplication,
                              QSizePolicy)
-from PyQt6.QtCore import Qt, QTimer, QUrl, QMimeData, QPoint, QEvent
-from PyQt6.QtGui import QDesktopServices, QDrag, QPixmap, QColor, QKeySequence, QIcon, QAction, QPainter
+from PyQt6.QtCore import Qt, QTimer, QUrl, QMimeData, QPoint, QEvent, QModelIndex
+from PyQt6.QtGui import QDesktopServices, QDrag, QPixmap, QColor, QKeySequence, QIcon, QAction, QPainter, QBrush
 import uuid
 from datetime import datetime
 import os
@@ -15,6 +15,7 @@ from crypto import CryptoManager
 from password_generator import PasswordGenerator
 from batch_importer import BatchImporter
 from settings_dialog import SettingsDialog
+from about_dialog import AboutDialog
 
 class PasswordEntryDialog(QDialog):
     """密码条目添加/编辑对话框"""
@@ -176,7 +177,7 @@ class MainWindow(QMainWindow):
         self.entries = {}
         self.entries_order = []
         self.master_password = ""
-        self.settings = {"auto_lock_time": 5, "lock_on_minimize": True, "theme": "light", "enable_auto_lock": True}
+        self.settings = {"auto_lock_time": 5, "lock_on_minimize": True, "theme": "light", "enable_auto_lock": True, "main_window_on_top": False}
         self.login_dialog_visible = False
         self.last_selected_row = -1  # 用于Shift多选
         
@@ -244,6 +245,8 @@ class MainWindow(QMainWindow):
         self.table_widget.verticalHeader().setVisible(False)  # 隐藏行号
         self.table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table_widget.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        # 禁用"当前单元格"的蓝色指示色，避免与勾选行高亮混淆
+        self.table_widget.currentCellChanged.connect(lambda *args: self.table_widget.setCurrentIndex(QModelIndex()))
         self.table_widget.doubleClicked.connect(self.open_url)
         
         # 优化滚动性能
@@ -328,6 +331,11 @@ class MainWindow(QMainWindow):
         help_action = QAction("操作说明", self)
         help_action.triggered.connect(self.show_help)
         help_menu.addAction(help_action)
+
+        # 关于按钮（直接显示在菜单栏，位于帮助旁边）
+        about_action = QAction("关于", self)
+        about_action.triggered.connect(self.show_about)
+        menu_bar.addAction(about_action)
     
     def init_shortcuts(self):
         """初始化快捷键"""
@@ -468,6 +476,8 @@ class MainWindow(QMainWindow):
         login_dialog.setWindowTitle("登录")
         login_dialog.setFixedSize(300, 150)
         login_dialog.setModal(True)
+        # 登录框始终置顶，避免弹出时被其他窗口遮住
+        login_dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         
         layout = QVBoxLayout(login_dialog)
         
@@ -513,6 +523,8 @@ class MainWindow(QMainWindow):
         setup_dialog.setWindowTitle("首次运行设置")
         setup_dialog.setFixedSize(400, 250)
         setup_dialog.setModal(True)
+        # 置顶显示，避免被其他窗口遮住
+        setup_dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         
         layout = QVBoxLayout(setup_dialog)
         
@@ -1111,8 +1123,11 @@ class MainWindow(QMainWindow):
         
         # 选择框
         checkbox = QCheckBox()
+        checkbox.setObjectName("rowCheck")
         checkbox.setCheckState(Qt.CheckState.Unchecked)
         checkbox.stateChanged.connect(lambda state, r=row: self.on_checkbox_clicked(r))
+        # 勾选状态变化时同步整行高亮
+        checkbox.stateChanged.connect(lambda state, r=row: self.update_row_highlight(r))
         # 在复选框上也安装事件过滤器，使其支持滑动选择
         checkbox.installEventFilter(self)
         checkbox.setProperty("row", row)  # 存储行号
@@ -1145,6 +1160,7 @@ class MainWindow(QMainWindow):
         
         # 操作按钮
         action_widget = QWidget()
+        action_widget.setObjectName("actionCell")
         action_layout = QHBoxLayout(action_widget)
         action_layout.setContentsMargins(2, 2, 2, 2)
         action_layout.setSpacing(5)  # 添加按钮之间的间距
@@ -1442,6 +1458,36 @@ N网,https://www.nexusmods.com/,username1,password1
             # 普通点击：更新最后选中的行
             self.last_selected_row = row
     
+    def update_row_highlight(self, row):
+        """根据复选框勾选状态高亮/取消高亮整行，方便定位当前操作的条目"""
+        checkbox = self.table_widget.cellWidget(row, 1)
+        if not checkbox:
+            return
+        checked = checkbox.checkState() == Qt.CheckState.Checked
+        dark = self.settings.get("theme", "light") == "dark"
+
+        if checked:
+            color_hex = "#3d5a80" if dark else "#e3f2fd"
+            bg = QBrush(QColor(color_hex))
+            check_style = f"QCheckBox#rowCheck {{ background-color: {color_hex}; }}"
+            action_style = f"QWidget#actionCell {{ background-color: {color_hex}; }}"
+        else:
+            bg = QBrush()  # 恢复默认背景
+            check_style = ""
+            action_style = ""
+
+        # 文本列：序号、网站名、网址、账号、备注
+        for col in (0, 2, 3, 4, 5):
+            item = self.table_widget.item(row, col)
+            if item:
+                item.setBackground(bg)
+
+        # 复选框列和操作列（cellWidget 需用样式表设置背景）
+        checkbox.setStyleSheet(check_style)
+        action_widget = self.table_widget.cellWidget(row, 6)
+        if action_widget:
+            action_widget.setStyleSheet(action_style)
+
     def on_header_clicked(self, logical_index):
         """表头点击事件"""
         if logical_index == 1:  # 点击"全选"列的表头
@@ -1835,6 +1881,11 @@ N网,https://www.nexusmods.com/,username1,password1
         msg_box.setIcon(QMessageBox.Icon.Information)
         msg_box.addButton("确定", QMessageBox.ButtonRole.AcceptRole)
         msg_box.exec()
+
+    def show_about(self):
+        """显示关于对话框（版本信息与更新检查）"""
+        dialog = AboutDialog(self)
+        dialog.exec()
     
     def load_settings(self):
         """加载设置（直接读取文件，不创建对话框）"""
@@ -1847,7 +1898,8 @@ N网,https://www.nexusmods.com/,username1,password1
             "email": "",
             "email_password": "",
             "floating_window_shortcut": "Ctrl+Shift+X",
-            "enable_auto_lock": True
+            "enable_auto_lock": True,
+            "main_window_on_top": False
         }
 
         settings_file = "settings.json"
@@ -1861,6 +1913,7 @@ N网,https://www.nexusmods.com/,username1,password1
         else:
             self.settings = default_settings
 
+        self.apply_always_on_top()
         self.apply_theme()
     
     def toggle_floating_window(self):
@@ -1874,6 +1927,17 @@ N网,https://www.nexusmods.com/,username1,password1
             self.floating_window.set_entries(self.entries, self.entries_order)
             self.floating_window.show()
     
+    def apply_always_on_top(self):
+        """应用主窗口置顶设置（设置-外观设置-窗口 中的开关）"""
+        on_top = self.settings.get("main_window_on_top", False)
+        if bool(self.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) == on_top:
+            return
+        # 修改窗口标志会隐藏窗口，先记录可见状态（锁定到托盘时不重新显示）
+        was_visible = not self.isHidden()
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, on_top)
+        if was_visible:
+            self.show()
+
     def apply_theme(self):
         """应用主题"""
         theme = self.settings.get("theme", "light")
@@ -1908,7 +1972,6 @@ N网,https://www.nexusmods.com/,username1,password1
                     border: 1px solid #555555;
                 }
                 QTableWidget::item {
-                    background-color: #3d3d3d;
                     color: #ffffff;
                 }
                 QTableWidget::item:selected {
@@ -1934,7 +1997,11 @@ N网,https://www.nexusmods.com/,username1,password1
         else:  # 浅色主题
             # 重置为默认样式
             self.setStyleSheet("")
-        
+
+        # 主题切换后按新主题重新应用行高亮
+        for row in range(self.table_widget.rowCount()):
+            self.update_row_highlight(row)
+
         # 同步悬浮窗口主题
         if hasattr(self, 'floating_window') and self.floating_window:
             self.floating_window.toggle_theme(theme)
@@ -2231,10 +2298,10 @@ N网,https://www.nexusmods.com/,username1,password1
     def export_passwords(self):
         """导出原始密码数据"""
         # 文件选择对话框
-        file_path, _ = QFileDialog.getSaveFileName(self, "选择导出文件", "passwords_export.txt", "Text Files (*.txt);;CSV Files (*.csv)")
+        file_path, _ = QFileDialog.getSaveFileName(self, "选择导出文件", "passwords_export.txt", "Text Files (*.txt);;Excel Files (*.xlsx)")
         if not file_path:
             return
-        
+
         try:
             # 准备导出数据
             export_data = []
@@ -2247,16 +2314,27 @@ N网,https://www.nexusmods.com/,username1,password1
                     "password": entry["password"],
                     "note": entry.get("note", "")
                 })
-            
-            # 写入文件
-            with open(file_path, 'w', encoding='utf-8') as f:
-                if file_path.endswith('.csv'):
-                    # CSV格式
-                    f.write("网站名,网址,账号,密码,备注\n")
-                    for item in export_data:
-                        f.write(f"{item['website_name']},{item['url']},{item['username']},{item['password']},{item['note']}\n")
-                else:
-                    # 文本格式
+
+            if file_path.endswith('.xlsx'):
+                # Excel格式（表头加粗 + 自适应列宽）
+                from openpyxl import Workbook
+                from openpyxl.styles import Font
+                from openpyxl.utils import get_column_letter
+
+                wb = Workbook()
+                ws = wb.active
+                ws.title = "密码导出"
+                ws.append(["网站名", "网址", "账号", "密码", "备注"])
+                for cell in ws[1]:
+                    cell.font = Font(bold=True)
+                for item in export_data:
+                    ws.append([item['website_name'], item['url'], item['username'], item['password'], item['note']])
+                for i, width in enumerate([20, 35, 25, 25, 30], start=1):
+                    ws.column_dimensions[get_column_letter(i)].width = width
+                wb.save(file_path)
+            else:
+                # 文本格式
+                with open(file_path, 'w', encoding='utf-8') as f:
                     for item in export_data:
                         f.write(f"网站名: {item['website_name']}\n")
                         f.write(f"网址: {item['url']}\n")

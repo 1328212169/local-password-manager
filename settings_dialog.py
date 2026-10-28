@@ -68,7 +68,8 @@ class SettingsDialog(QDialog):
             "email": "",
             "email_password": "",  # 加密存储
             "floating_window_shortcut": "Ctrl+Shift+X",  # 悬浮窗口快捷键
-            "enable_auto_lock": True  # 是否启用自动锁定（默认为启用）
+            "enable_auto_lock": True,  # 是否启用自动锁定（默认为启用）
+            "main_window_on_top": False  # 主窗口是否始终置顶
         }
 
         if os.path.exists(self.settings_file):
@@ -233,7 +234,22 @@ class SettingsDialog(QDialog):
         
         theme_group.setLayout(theme_layout)
         layout.addWidget(theme_group)
-        
+
+        # 窗口设置
+        window_group = QGroupBox("窗口")
+        window_layout = QVBoxLayout()
+
+        self.main_on_top_check = QCheckBox("主窗口始终置顶")
+        self.main_on_top_check.setChecked(self.settings.get("main_window_on_top", False))
+        window_layout.addWidget(self.main_on_top_check)
+
+        on_top_hint = QLabel("开启后主窗口将浮在其他窗口之上，不会被遮挡")
+        on_top_hint.setStyleSheet("color: gray; font-size: 10px;")
+        window_layout.addWidget(on_top_hint)
+
+        window_group.setLayout(window_layout)
+        layout.addWidget(window_group)
+
         # 快捷键设置
         shortcut_group = QGroupBox("快捷键设置")
         shortcut_layout = QVBoxLayout()
@@ -585,7 +601,10 @@ class SettingsDialog(QDialog):
         
         # 更新快捷键设置
         self.settings["floating_window_shortcut"] = self.shortcut_edit.text()
-        
+
+        # 更新主窗口置顶设置
+        self.settings["main_window_on_top"] = self.main_on_top_check.isChecked()
+
         self.save_settings()
         super().accept()
     

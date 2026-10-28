@@ -1,10 +1,10 @@
-# GitHub 上传指南 - 密码管理器 v1.2.2
+# GitHub 上传指南 - 密码管理器 v1.2.4
 
-## 📋 已完成的操作
+## 📋 当前状态
 
-✅ Git仓库已初始化  
-✅ 所有源代码文件已添加到暂存区  
-✅ 第一次提交已完成（v1.2.2版本）  
+✅ Git仓库已初始化并关联远程仓库  
+✅ 仓库地址：https://github.com/1328212169/local-password-manager  
+✅ 当前版本：v1.2.4（2026-10-29）  
 
 ---
 
@@ -44,8 +44,8 @@ git push -u origin main
 
 **完整示例：**
 ```bash
-cd "d:\ruanjian\chengxu\Python\密码管理器开发\密码管理器"
-git remote add origin https://github.com/yourusername/password-manager.git
+cd "d:\03_成品库\软件成品\密码管理器开发\密码管理器"
+git remote add origin https://github.com/1328212169/local-password-manager.git
 git branch -M main
 git push -u origin main
 ```
@@ -65,7 +65,7 @@ git push -u origin main
 2. **添加现有仓库**
    - 打开GitHub Desktop
    - 点击 "File" → "Add Local Repository"
-   - 选择目录: `d:\ruanjian\chengxu\Python\密码管理器开发\密码管理器`
+   - 选择目录: `d:\03_成品库\软件成品\密码管理器开发\密码管理器`
    - 点击 "Add Repository"
 
 3. **发布到GitHub**
@@ -76,41 +76,39 @@ git push -u origin main
 
 ---
 
-## 📁 已上传的文件清单
+## 📁 上传的文件清单
 
-### ✅ 核心源代码（9个文件）
+### ✅ 核心源代码（11个文件）
 - `main.py` - 主程序入口
 - `main_window.py` - 主窗口界面
-- `floating_window.py` - 悬浮窗口（v1.2.2更新）
+- `floating_window.py` - 悬浮窗口
+- `about_dialog.py` - 关于对话框与更新检查（v1.2.4新增）
 - `crypto.py` - 加密模块
 - `batch_importer.py` - 批量导入功能
 - `password_generator.py` - 密码生成器
 - `settings_dialog.py` - 设置对话框
 - `txt_converter.py` - TXT转换工具
 - `build.bat` - 打包脚本
+- `version_info.txt` - exe版本信息
 
-### ✅ 配置文件（4个文件）
+### ✅ 配置与文档文件
 - `requirements.txt` - Python依赖包
-- `version_info.txt` - 版本信息
 - `.gitignore` - Git忽略规则
 - `密码管理器.spec` - PyInstaller配置
-
-### ✅ 文档文件（5个文件）
-- `README.md` - 项目说明（含v1.2.2更新）
-- `CHANGELOG.md` - 更新日志（含v1.2.2）
-- `CONTRIBUTING.md` - 贡献指南
+- `README.md` - 项目说明
+- `CHANGELOG.md` - 更新日志
 - `LICENSE` - 开源许可证
 - `发布说明.txt` - 版本发布说明
 
-### ✅ 测试文件（8个文件）
-- `test_*.py` - 各种测试脚本
-
 ### ❌ 不会上传的文件（已在.gitignore中排除）
-- `dist/` - 打包输出（exe、zip等）
-- `build/` - 构建临时文件
+- `dist/`、`build/` - 打包输出与构建临时文件
 - `*.exe` - 可执行文件
 - `passwords.json.aes` - 用户密码数据（敏感！）
-- `settings.json` - 用户设置
+- `settings.json` - 用户设置（敏感！）
+- `启动.txt`、`密码测试.txt` - 本地测试数据（敏感！）
+- `test_*.py` - 测试脚本
+- `create_release.py`、`Git 同步清单.md` 等内部工具与报告
+- `.venv/` - Python虚拟环境
 - `__pycache__/` - Python缓存
 - `nul`, `con`, `prn`, `aux` - Windows保留文件名
 
@@ -168,27 +166,30 @@ git push
 
 ---
 
-## 🎯 v1.2.2 版本更新内容
+## 🎯 v1.2.4 版本更新内容
 
 本次提交包含以下更新：
 
-### 主要改进
-- ✅ 优化悬浮窗口选中状态显示效果
-  - 选中条目时显示明显的蓝色背景（#e3f2fd）
-  - 边框加粗至3px并变为醒目的蓝色（#2196f3）
-  - 增强视觉反馈，使选中状态一目了然
+### 新增功能
+- ✅ 新增"关于"按钮（菜单栏"帮助"右侧），显示当前版本号
+- ✅ 自动联网检查更新，发现新版本时可一键跳转下载
+- ✅ 新增"主窗口始终置顶"设置开关（设置 → 外观设置 → 窗口）
+- ✅ 批量导出新增 XLSX 格式（替代 CSV），表头加粗、列宽优化
 
-- ✅ 改进悬浮窗口条目样式
-  - 增加未选中条目的边框宽度（从1px到2px）
-  - 增大圆角半径（从4px到6px）
-  - 提升整体美观度和可读性
+### 体验改进
+- ✅ 勾选条目后整行高亮（浅色/深色主题自适应）
+- ✅ 登录窗口、首次设置窗口始终置顶，不再被其他窗口遮挡
+
+### 问题修复
+- ✅ 修复点击单元格后出现杂散蓝色残留的问题
+- ✅ 修复含逗号、引号等特殊字符的密码导出后列错位的问题
 
 ### 更新的文档
-- `README.md` - 添加v1.2.2版本说明
-- `CHANGELOG.md` - 添加v1.2.2更新日志
-- `发布说明.txt` - 更新为v1.2.2发布说明
-- `version_info.txt` - 版本号更新为1.2.2.0
-- `build.bat` - 版本号更新为1.2.2
+- `README.md` - 添加v1.2.4版本说明
+- `CHANGELOG.md` - 添加v1.2.4更新日志
+- `发布说明.txt` - 更新为v1.2.4发布说明
+- `version_info.txt` - 版本号更新为1.2.4.0
+- `build.bat` - 版本号更新为1.2.4
 
 ---
 
