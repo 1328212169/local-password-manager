@@ -76,7 +76,7 @@ class AboutDialog(QDialog):
         main_layout.addWidget(version_label)
 
         # 软件信息
-        info_label = QLabel("一个安全、易用的本地密码管理工具\n\n开发者：幽灵足迹\n许可证：MIT")
+        info_label = QLabel("一个安全、易用的本地密码管理工具\n\n开发者：幽灵足迹\n许可证：GPL-3.0")
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(info_label)
 
